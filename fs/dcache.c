@@ -268,6 +268,43 @@ static void d_free(struct dentry *dentry)
 	dentry_free(dentry);
 }
 
+void take_dentry_name_snapshot(struct name_snapshot *name, struct dentry *dentry)
+{
+	spin_lock(&dentry->d_lock);
+	if (unlikely(dname_external(dentry))) {
+		u32 len;
+		char *p;
+
+		for (;;) {
+			len = dentry->d_name.len;
+			spin_unlock(&dentry->d_lock);
+
+			p = kmalloc(len + 1, GFP_KERNEL | __GFP_NOFAIL);
+
+			spin_lock(&dentry->d_lock);
+			if (dentry->d_name.len <= len)
+				break;
+			kfree(p);
+		}
+		memcpy(p, dentry->d_name.name, dentry->d_name.len + 1);
+		spin_unlock(&dentry->d_lock);
+
+		name->name = p;
+	} else {
+		memcpy(name->inline_name, dentry->d_iname, DNAME_INLINE_LEN);
+		spin_unlock(&dentry->d_lock);
+		name->name = name->inline_name;
+	}
+}
+EXPORT_SYMBOL(take_dentry_name_snapshot);
+
+void release_dentry_name_snapshot(struct name_snapshot *name)
+{
+	if (unlikely(name->name != name->inline_name))
+		kfree(name->name);
+}
+EXPORT_SYMBOL(release_dentry_name_snapshot);
+
 /**
  * dentry_rcuwalk_barrier - invalidate in-progress rcu-walk lookups
  * @dentry: the target dentry
@@ -329,33 +366,6 @@ static void dentry_unlink_inode(struct dentry * dentry)
 	else
 		iput(inode);
 }
-
-void take_dentry_name_snapshot(struct name_snapshot *name, struct dentry *dentry)
-{
-       spin_lock(&dentry->d_lock);
-       if (unlikely(dname_external(dentry))) {
-               struct external_name *p = external_name(dentry);
-               atomic_inc(&p->u.count);
-               spin_unlock(&dentry->d_lock);
-               name->name = p->name;
-       } else {
-               memcpy(name->inline_name, dentry->d_iname, DNAME_INLINE_LEN);
-               spin_unlock(&dentry->d_lock);
-               name->name = name->inline_name;
-       }
-}
-EXPORT_SYMBOL(take_dentry_name_snapshot);
-
-void release_dentry_name_snapshot(struct name_snapshot *name)
-{
-       if (unlikely(name->name != name->inline_name)) {
-               struct external_name *p;
-               p = container_of(name->name, struct external_name, name[0]);
-               if (unlikely(atomic_dec_and_test(&p->u.count)))
-                       kfree_rcu(p, u.head);
-       }
-}
-EXPORT_SYMBOL(release_dentry_name_snapshot);
 
 /*
  * dentry_lru_(add|del|prune|move_tail) must be called with d_lock held.

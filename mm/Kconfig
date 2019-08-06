@@ -315,6 +315,32 @@ config KSM
 	  See Documentation/vm/ksm.txt for more information: KSM is inactive
 	  until a program has madvised that an area is MADV_MERGEABLE, and
 	  root has set /sys/kernel/mm/ksm/run to 1 (if CONFIG_SYSFS is set).
+choice
+	prompt "Choose UKSM/KSM strategy"
+	default UKSM
+	depends on KSM
+	help
+	  This option allows to select a UKSM/KSM stragety.
+
+config UKSM
+	bool "Ultra-KSM for page merging"
+	depends on KSM
+	help
+	UKSM is inspired by the Linux kernel project \u2014 KSM(Kernel Same
+	page Merging), but with a fundamentally rewritten core algorithm. With
+	an advanced algorithm, UKSM now can transparently scans all anonymously
+	mapped user space applications with an significantly improved scan speed
+	and CPU efficiency. Since KVM is friendly to KSM, KVM can also benefit from
+	UKSM. Now UKSM has its first stable release and first real world enterprise user.
+	For more information, please goto its project page.
+	(www.kerneldedup.org)
+
+config KSM_LEGACY
+	bool "Legacy KSM implementation"
+	depends on KSM
+	help
+	The legacy KSM implementation from Redhat.
+endchoice
 
 config DEFAULT_MMAP_MIN_ADDR
         int "Low address space to protect from user allocation"
@@ -515,7 +541,7 @@ config ZSWAP
 	bool "Compressed cache for swap pages (EXPERIMENTAL)"
 	depends on FRONTSWAP && CRYPTO=y
 	select CRYPTO_LZO
-	select ZBUD
+	select ZPOOL
 	default n
 	help
 	  A lightweight compressed cache for swap pages.  It takes
@@ -566,16 +592,6 @@ config ZPOOL
 	  Compressed memory storage API.  This allows using either zbud or
 	  zsmalloc.
 
-config ZBUD
-	tristate "Low density storage for compressed pages"
-	default n
-	help
-	  A special purpose allocator for storing compressed pages.
-	  It is designed to store up to two compressed pages per physical
-	  page.  While this design limits storage density, it has simple and
-	  deterministic reclaim properties that make it preferable to a higher
-	  density approach when reclaim will be used.
-
 config ZSMALLOC
 	bool "Memory allocator for compressed pages"
 	depends on MMU
@@ -598,5 +614,41 @@ config PGTABLE_MAPPING
 	  then you should select this. This causes zsmalloc to use page table
 	  mapping rather than copying for object mapping.
 
-	  You can check speed with zsmalloc benchmark[1].
-	  [1] https://github.com/spartacus06/zsmalloc
+	  You can check speed with zsmalloc benchmark:
+	  https://github.com/spartacus06/zsmapbench
+
+config ZSMALLOC_STAT
+	bool "Export zsmalloc statistics"
+	depends on ZSMALLOC
+	select DEBUG_FS
+	help
+	  This option enables code in the zsmalloc to collect various
+	  statistics about whats happening in zsmalloc and exports that
+	  information to userspace via debugfs.
+	  If unsure, say N.
+
+config ZBUD
+	tristate "Low density storage for compressed pages"
+	default n
+	help
+	  A special purpose allocator for storing compressed pages.
+	  It is designed to store up to two compressed pages per physical
+	  page.  While this design limits storage density, it has simple and
+	  deterministic reclaim properties that make it preferable to a higher
+	  density approach when reclaim will be used.
+
+config VM_MAX_READAHEAD
+	int "default max readahead window size"
+	default 128
+	help
+	  This sets the VM_MAX_READAHEAD value to allow the readahead window
+	  to grow to a maximum size of configured. This will benefit sequential
+	  read throughput and thus early boot performance.
+
+config KSM_THREAD_SLEEPMS
+	int "default ms range when ksm should sleep between batches"
+	default 20
+	help
+	  This sets the default milliseconds range when ksm should sleep between
+	  batches. The implementatiion of this config is done to provide a window
+	  configurable via defconfig. If left untouched it defaults to stock 20ms.

@@ -69,6 +69,8 @@ struct qpnp_vib {
 	spinlock_t lock;
 };
 
+static struct qpnp_vib *haxvib;
+
 static int qpnp_vib_read_u8(struct qpnp_vib *vib, u8 *data, u16 reg)
 {
 	int rc;
@@ -488,6 +490,8 @@ static int qpnp_vibrator_probe(struct spmi_device *spmi)
 
 	dev_set_drvdata(&spmi->dev, vib);
 
+	haxvib = vib;
+
 	rc = timed_output_dev_register(&vib->timed_dev);
 	if (rc < 0)
 		return rc;
@@ -516,6 +520,11 @@ error_create_min:
 error_create_level:
 	timed_output_dev_unregister(&vib->timed_dev);
 	return rc;
+}
+
+void vibrate(int strength)
+{
+        qpnp_vib_enable(&haxvib->timed_dev, strength);
 }
 
 static int qpnp_vibrator_remove(struct spmi_device *spmi)

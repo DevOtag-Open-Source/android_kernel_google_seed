@@ -333,10 +333,8 @@ EXPORT_SYMBOL(set_nlink);
  */
 void inc_nlink(struct inode *inode)
 {
-	if (unlikely(inode->i_nlink == 0)) {
-		WARN_ON(!(inode->i_state & I_LINKABLE));
+	if (WARN_ON(inode->i_nlink == 0))
 		atomic_long_dec(&inode->i_sb->s_remove_count);
-	}
 
 	inode->__i_nlink++;
 }
@@ -887,7 +885,11 @@ unsigned int get_next_ino(void)
 	}
 #endif
 
-	*p = ++res;
+	res++;
+	/* get_next_ino should not provide a 0 inode number */
+	if (unlikely(!res))
+		res++;
+	*p = res;
 	put_cpu_var(last_ino);
 	return res;
 }

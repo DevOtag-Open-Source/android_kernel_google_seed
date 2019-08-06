@@ -383,6 +383,20 @@ int device_set_wakeup_enable(struct device *dev, bool enable)
 }
 EXPORT_SYMBOL_GPL(device_set_wakeup_enable);
 
+/**
+ * wakeup_source_not_registered - validate the given wakeup source.
+ * @ws: Wakeup source to be validated.
+ */
+static bool wakeup_source_not_registered(struct wakeup_source *ws)
+{
+	/*
+	 * Use timer struct to check if the given source is initialized
+	 * by wakeup_source_add.
+	 */
+	return ws->timer.function != pm_wakeup_timer_fn ||
+		   ws->timer.data != (unsigned long)ws;
+}
+
 /*
  * The functions below use the observation that each wakeup event starts a
  * period in which the system should not be suspended.  The moment this period
@@ -422,6 +436,10 @@ EXPORT_SYMBOL_GPL(device_set_wakeup_enable);
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
 	unsigned int cec;
+
+	if (WARN(wakeup_source_not_registered(ws),
+			"unregistered wakeup source\n"))
+		return;
 
 	/*
 	 * active wakeup source should bring the system
@@ -719,10 +737,6 @@ void __pm_wakeup_event(struct wakeup_source *ws, unsigned int msec)
 
 	wakeup_source_report_event(ws);
 
-	// Regulate Wake Time. Cut to 55% of Time Requested if Limits Exceeded.
-	if (ktime_to_ms(ws->total_time) > 900000 || (ws->wakeup_count > 8 && ktime_to_ms(ws->max_time) > 60000))
-		msec = ((msec * 55) / 100);
-
 	if (!msec) {
 		wakeup_source_deactivate(ws);
 		goto unlock;
@@ -821,8 +835,10 @@ bool pm_wakeup_pending(void)
 	}
 	spin_unlock_irqrestore(&events_lock, flags);
 
-	if (ret)
+	if (ret) {
+		pr_info("PM: Wakeup pending, aborting suspend\n");
 		print_active_wakeup_sources();
+	}
 
 	return ret;
 }
